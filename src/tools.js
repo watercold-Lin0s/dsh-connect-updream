@@ -16,6 +16,7 @@
  */
 
 import { resultTextOf, resultURLsOf } from './upstream.js';
+import { cli, CliError } from './cli.js';
 
 /**
  * The host kills a tool call at 600 s. Stay under it on purpose.
@@ -108,44 +109,59 @@ function pickModel(requested, enabled, catalog, kind, preferred = []) {
 }
 
 /**
- * Submit one generation task and wait for it to settle.
+ * The active key for a call. The CLI carries the same key in its own config,
+ * but passing it explicitly keeps a tool call independent of a stale CLI config
+ * if the user logged in elsewhere in the meantime.
+ */
+function keyOf(settings) {
+  return typeof settings.apiKey === 'function' ? settings.apiKey() : '';
+}
+
+/**
+ * Submit one generation through the CLI and poll it to a terminal state.
+ *
+ * `--wait` is intentionally not passed to `updream generate`: the host kills a
+ * tool call at 600 s, and a bare host timeout would lose the task id. Instead
+ * submit, read the id, then poll with `task wait`, whose CLI timeout error
+ * carries the last task state so `updream_task` can take over.
+ *
  * @param settings - plugin settings bundle.
- * @param options - endpoint kind, request body, and wait budget.
+ * @param options - kind, project, prompt, model, node target, extra params.
  * @returns the task id and its final document.
  */
 async function runGeneration(settings, options) {
-  const { client, signal } = settings;
-  const submitted = await client.submit(options.kind, options.body, { signal });
+  const { signal } = options;
+  const cfg = settings.config;
+  const key = keyOf(settings);
+  const submitted = await cli.generate(cfg, key, options.project, options.kind, {
+    prompt: options.prompt,
+    model: options.model,
+    node: options.node,
+    newTitle: options.newTitle,
+    params: options.params ?? {},
+  }, signal);
   const taskId = typeof submitted?.task_id === 'string' ? submitted.task_id : '';
-  if (taskId === '') throw new Error('Updream 未返回 task_id，任务没有提交成功');
+  if (taskId === '') throw new Error('Updream CLI 未返回 task_id，任务没有提交成功');
 
-  // A submission may already report a terminal failure (quota, wrong model).
-  if (submitted.status === 'failed') {
-    const reason = typeof submitted.error === 'string' ? submitted.error : submitted.error?.message ?? submitted.message ?? '未知原因';
-    throw new Error(`Updream 拒绝了这个任务：${reason}`);
-  }
-
-  // `taskTimeoutMs` is user-editable and its ceiling is higher than the host's
-  // tool cap. Without this clamp a configured 900 s wait would always lose the
-  // race to the host's 600 s kill — and lose it with no task id in the error.
   const waitBudget = Math.min(
     Number(options.timeoutMs) || HOST_TOOL_CAP_MS,
     HOST_TOOL_CAP_MS - TOOL_TIMEOUT_MARGIN_MS,
   );
 
-  const task = await client.waitForTask(taskId, {
-    signal,
-    intervalMs: POLL_INTERVAL_MS,
-    timeoutMs: waitBudget,
-  });
+  let task;
+  try {
+    task = await cli.taskWait(cfg, key, taskId, Math.round(waitBudget / 1000), signal);
+  } catch (cause) {
+    if (cause?.code !== 'TASK_TIMEOUT' && cause?.code !== 'CLI_TIMEOUT') throw cause;
+    // A wait that ran out is not a failed task: report the last state so the
+    // model can call updream_task instead of resubmitting (and re-paying).
+    task = cause.data ?? await cli.task(cfg, key, taskId, signal);
+  }
 
   const status = String(task?.status ?? '');
   if (status === 'failed' || status === 'cancelled' || status === 'canceled') {
     const reason = typeof task?.error === 'string' ? task.error : task?.error?.message ?? task?.message ?? '未知原因';
     throw new Error(`Updream 生成失败：${reason}${typeof task?.error_code === 'string' && task.error_code !== '' ? `（${task.error_code}）` : ''}`);
-  }
-  if (status === 'waiting_asset_review') {
-    return { taskId, task, status };
   }
   return { taskId, task, status };
 }
@@ -159,7 +175,7 @@ async function runGeneration(settings, options) {
  * @param signal - cancellation.
  * @returns absolute URLs.
  */
-async function resolveImages(settings, entries, signal, agent) {
+async function resolveImages(settings, entries, signal, agent, projectId = projectOf({}, settings)) {
   const urls = [];
   for (const entry of entries.slice(0, 5)) {
     const value = String(entry ?? '').trim();
@@ -168,9 +184,12 @@ async function resolveImages(settings, entries, signal, agent) {
       urls.push(value);
       continue;
     }
-    const file = await settings.readMediaFile(value, 'image', signal, agent);
-    const uploaded = await settings.client.upload(file, 'image', { signal });
-    urls.push(uploaded.url);
+    // The CLI uploads the file itself and adds it to the project assets; only
+    // the resolved path is passed, never the bytes. This keeps multipart upload
+    // and face-precheck in the one maintained implementation.
+    const path = await settings.resolveMediaPath(value, agent);
+    const uploaded = await cli.upload(settings.config, keyOf(settings), projectId, path, 'image', signal);
+    urls.push(String(uploaded?.url ?? uploaded?.asset?.url ?? ''));
   }
   return urls;
 }
@@ -261,43 +280,33 @@ function imageTool(settings) {
     },
     timeoutMs: 420_000,
     async execute(args, exec) {
-      const { client } = settings;
-      const listing = await client.models('image').catch(() => ({ models: [], tier: '' }));
+      const listing = await cli.models(settings.config, keyOf(settings), 'image', exec.signal)
+        .catch(() => ({ models: [], user_tier: '' }));
       const catalog = listing.models.map((model) => String(model.value ?? ''));
-      const usable = listing.models.filter((model) => usableByTier(model, listing.tier)).map((model) => String(model.value ?? ''));
+      const usable = listing.models.filter((model) => usableByTier(model, listing.user_tier)).map((model) => String(model.value ?? ''));
       const model = pickModel(args.model, settings.models?.image, catalog, '图片', usable);
       const projectId = projectOf(args, settings);
 
       let nodeId = typeof args.node_id === 'string' && args.node_id.trim() !== '' ? args.node_id.trim() : '';
-      if (nodeId === '' && args.on_canvas === true) {
-        const node = await client.createNode(projectId, {
-          node_type: 'image',
-          title: String(args.prompt ?? '').slice(0, 40),
-          prompt: args.prompt,
-          model_name: model,
-        }, { signal: exec.signal });
-        nodeId = node?.id === undefined ? '' : String(node.id);
-      }
+      const newTitle = nodeId === '' && args.on_canvas === true ? String(args.prompt ?? '').slice(0, 40) : '';
 
-      const body = {
-        prompt: args.prompt,
-        model_name: model,
-        project_id: projectId,
+      const params = {
         num_images: 1,
-        ...nodeId === '' ? {} : { node_id: Number(nodeId) },
         ...args.ratio === undefined ? {} : { ratio: args.ratio },
         ...args.resolution === undefined ? {} : { image_resolution: args.resolution },
         ...args.quality === undefined ? {} : { image_quality: args.quality },
       };
       if (Array.isArray(args.reference_images) && args.reference_images.length > 0) {
-        body.reference_images = await resolveImages(settings, args.reference_images, exec.signal, exec.agent);
+        params.reference_images = await resolveImages(settings, args.reference_images, exec.signal, exec.agent, projectId);
       }
 
       const { taskId, task } = await runGeneration(settings, {
-        kind: 'image',
-        body,
-        timeoutMs: settings.taskTimeoutMs,
+        kind: 'image', project: projectId, prompt: args.prompt, model,
+        node: nodeId, newTitle, params,
+        timeoutMs: settings.taskTimeoutMs, signal: exec.signal,
       });
+      // A --new-node submission reports the node id in the CLI data.
+      nodeId = String((task?.node_id ?? '') || nodeId || '');
       return { task_id: taskId, urls: resultURLsOf(task, 'image'), model, node_id: nodeId };
     },
   };
@@ -337,43 +346,30 @@ function videoTool(settings) {
     },
     timeoutMs: HOST_TOOL_CAP_MS - TOOL_TIMEOUT_MARGIN_MS,
     async execute(args, exec) {
-      const { client } = settings;
-      const listing = await client.models('video').catch(() => ({ models: [], tier: '' }));
+      const listing = await cli.models(settings.config, keyOf(settings), 'video', exec.signal)
+        .catch(() => ({ models: [], user_tier: '' }));
       const catalog = listing.models.map((model) => String(model.value ?? ''));
-      const usable = listing.models.filter((model) => usableByTier(model, listing.tier)).map((model) => String(model.value ?? ''));
+      const usable = listing.models.filter((model) => usableByTier(model, listing.user_tier)).map((model) => String(model.value ?? ''));
       const model = pickModel(args.model, settings.models?.video, catalog, '视频', usable);
       const projectId = projectOf(args, settings);
 
-      let nodeId = '';
-      if (args.on_canvas === true) {
-        const node = await client.createNode(projectId, {
-          node_type: 'video',
-          title: String(args.prompt ?? '').slice(0, 40),
-          prompt: args.prompt,
-          model_name: model,
-        }, { signal: exec.signal });
-        nodeId = node?.id === undefined ? '' : String(node.id);
-      }
-
-      const body = {
-        prompt: args.prompt,
-        model_name: model,
-        project_id: projectId,
-        ...nodeId === '' ? {} : { node_id: Number(nodeId) },
+      const newTitle = args.on_canvas === true ? String(args.prompt ?? '').slice(0, 40) : '';
+      const params = {
         ...args.duration === undefined ? {} : { duration: args.duration },
         ...args.resolution === undefined ? {} : { resolution: args.resolution },
         ...args.aspect_ratio === undefined ? {} : { aspect_ratio: args.aspect_ratio },
       };
       if (typeof args.image === 'string' && args.image.trim() !== '') {
-        body.image = (await resolveImages(settings, [args.image], exec.signal, exec.agent))[0];
-        body.generate_type = 'image_to_video';
+        params.image = (await resolveImages(settings, [args.image], exec.signal, exec.agent, projectId))[0];
+        params.generate_type = 'image_to_video';
       }
 
       const { taskId, task } = await runGeneration(settings, {
-        kind: 'video',
-        body,
-        timeoutMs: settings.taskTimeoutMs,
+        kind: 'video', project: projectId, prompt: args.prompt, model,
+        node: '', newTitle, params,
+        timeoutMs: settings.taskTimeoutMs, signal: exec.signal,
       });
+      const nodeId = String(task?.node_id ?? '');
       return { task_id: taskId, urls: resultURLsOf(task, 'video'), model, node_id: nodeId };
     },
   };
@@ -425,19 +421,19 @@ function textTool(settings) {
     },
     timeoutMs: 300_000,
     async execute(args, exec) {
-      const { client } = settings;
-      const listing = await client.models('text').catch(() => ({ models: [], tier: '' }));
+      const listing = await cli.models(settings.config, keyOf(settings), 'text', exec.signal)
+        .catch(() => ({ models: [], user_tier: '' }));
       const catalog = listing.models.map((model) => String(model.value ?? ''));
-      const usable = listing.models.filter((model) => usableByTier(model, listing.tier)).map((model) => String(model.value ?? ''));
+      const usable = listing.models.filter((model) => usableByTier(model, listing.user_tier)).map((model) => String(model.value ?? ''));
       const model = pickModel(args.model, settings.models?.text, catalog, '文本', usable);
-      const body = { prompt: args.prompt, model_name: model };
+      const projectId = projectOf(args, settings);
+      const params = {};
       if (Array.isArray(args.reference_images) && args.reference_images.length > 0) {
-        body.reference_images = await resolveImages(settings, args.reference_images, exec.signal, exec.agent);
+        params.reference_images = await resolveImages(settings, args.reference_images, exec.signal, exec.agent, projectId);
       }
       const { taskId, task } = await runGeneration(settings, {
-        kind: 'text',
-        body,
-        timeoutMs: settings.taskTimeoutMs,
+        kind: 'text', project: projectId, prompt: args.prompt, model, params,
+        timeoutMs: settings.taskTimeoutMs, signal: exec.signal,
       });
       return { task_id: taskId, text: resultTextOf(task), model };
     },
@@ -529,18 +525,18 @@ function canvasTools(settings) {
       timeoutMs: 60_000,
       async execute(args, exec) {
         const projectId = projectOf(args, settings);
-        const canvas = await settings.client.canvas(projectId, { signal: exec.signal, full: args.full === true });
+        const canvas = await cli.canvas(settings.config, keyOf(settings), projectId, { full: args.full === true, signal: exec.signal });
         return {
           project_id: projectId,
-          node_count: canvas.nodes.length,
-          nodes: canvas.nodes.map((node) => ({
+          node_count: Array.isArray(canvas.nodes) ? canvas.nodes.length : 0,
+          nodes: (canvas.nodes ?? []).map((node) => ({
             id: String(node.id ?? ''),
             type: String(node.node_type ?? ''),
             title: String(node.name ?? node.title ?? ''),
             result_url: firstURLOf(node),
             task_status: String(node.task_status ?? ''),
           })),
-          connections: canvas.connections.map((connection) => ({
+          connections: (canvas.connections ?? []).map((connection) => ({
             id: String(connection.id ?? ''),
             from: String(connection.from_node_id ?? ''),
             to: String(connection.to_node_id ?? ''),
@@ -583,17 +579,13 @@ function canvasTools(settings) {
       timeoutMs: 60_000,
       async execute(args, exec) {
         const projectId = projectOf(args, settings);
-        const node = await settings.client.createNode(projectId, {
-          node_type: args.type,
-          ...args.title === undefined ? {} : { title: args.title },
-          ...args.prompt === undefined ? {} : { prompt: args.prompt },
-          ...args.model === undefined ? {} : { model_name: args.model },
-          ...args.x === undefined ? {} : { x: args.x },
-          ...args.y === undefined ? {} : { y: args.y },
-        }, { signal: exec.signal });
+        const node = await cli.nodeCreate(settings.config, keyOf(settings), projectId, {
+          type: args.type, title: args.title, prompt: args.prompt,
+          model: args.model, x: args.x, y: args.y,
+        }, exec.signal);
         return {
-          node_id: String(node?.id ?? ''),
-          type: String(node?.node_type ?? args.type),
+          node_id: String(node?.id ?? node?.node_id ?? ''),
+          type: String(node?.node_type ?? node?.type ?? args.type),
           title: String(node?.name ?? node?.title ?? args.title ?? ''),
         };
       },
@@ -629,11 +621,11 @@ function canvasTools(settings) {
       timeoutMs: 60_000,
       async execute(args, exec) {
         const projectId = projectOf(args, settings);
-        const connection = await settings.client.connect(projectId, Number(args.from_node_id), Number(args.to_node_id), { signal: exec.signal });
+        const connection = await cli.connect(settings.config, keyOf(settings), projectId, args.from_node_id, args.to_node_id, exec.signal);
         return {
-          connection_id: String(connection?.id ?? ''),
-          from: String(connection?.from_node_id ?? args.from_node_id),
-          to: String(connection?.to_node_id ?? args.to_node_id),
+          connection_id: String(connection?.id ?? connection?.connection_id ?? ''),
+          from: String(connection?.from_node_id ?? connection?.from ?? args.from_node_id),
+          to: String(connection?.to_node_id ?? connection?.to ?? args.to_node_id),
         };
       },
     },
@@ -666,7 +658,7 @@ function canvasTools(settings) {
       timeoutMs: 60_000,
       async execute(args, exec) {
         const projectId = projectOf(args, settings);
-        await settings.client.deleteNode(projectId, args.node_id, { signal: exec.signal });
+        await cli.nodeDelete(settings.config, keyOf(settings), args.node_id, projectId, exec.signal);
         return { deleted: true, node_id: args.node_id };
       },
     },
@@ -729,21 +721,16 @@ function canvasTools(settings) {
         if (args.wait === true) {
           const seconds = Math.max(5, Math.min(500, Number(args.wait_seconds) || 60));
           try {
-            task = await settings.client.waitForTask(taskId, {
-              signal: exec.signal,
-              intervalMs: POLL_INTERVAL_MS,
-              timeoutMs: seconds * 1000,
-            });
+            task = await cli.taskWait(settings.config, keyOf(settings), taskId, seconds, exec.signal);
           } catch (cause) {
             // A wait that ran out is not a failed task: report the last known
             // state rather than a bare error, so the model can decide to poll
             // again instead of resubmitting.
-            if (cause?.code !== 'TASK_TIMEOUT') throw cause;
-            const last = await settings.client.task(taskId, { signal: exec.signal });
-            task = last;
+            if (cause?.code !== 'TASK_TIMEOUT' && cause?.code !== 'CLI_TIMEOUT') throw cause;
+            task = cause.data ?? await cli.task(settings.config, keyOf(settings), taskId, exec.signal);
           }
         } else {
-          task = await settings.client.task(taskId, { signal: exec.signal });
+          task = await cli.task(settings.config, keyOf(settings), taskId, exec.signal);
         }
 
         const status = String(task?.status ?? '');
@@ -806,11 +793,12 @@ function canvasTools(settings) {
       timeoutMs: 60_000,
       async execute(args, exec) {
         const size = Math.max(1, Math.min(100, Number(args.size) || 50));
-        const projects = await settings.client.projects({
+        const listing = await cli.projects(settings.config, keyOf(settings), {
           size,
           search: typeof args.search === 'string' && args.search.trim() !== '' ? args.search.trim() : undefined,
           signal: exec.signal,
         });
+        const projects = listing?.projects ?? [];
         return {
           count: projects.length,
           projects: projects.map((project) => ({
@@ -858,17 +846,18 @@ function canvasTools(settings) {
       async execute(args, exec) {
         // Only the fields the caller named, mapped to their wire names. Sending
         // the whole node back would clobber `node_type` and the result history.
-        const patch = {};
-        if (typeof args.title === 'string') { patch.title = args.title; patch.name = args.title; }
-        if (typeof args.prompt === 'string') patch.prompt = args.prompt;
-        if (typeof args.model === 'string') patch.model_name = args.model;
-        if (typeof args.x === 'number') patch.x = args.x;
-        if (typeof args.y === 'number') patch.y = args.y;
-        if (Object.keys(patch).length === 0) {
+        const fields = {};
+        if (typeof args.title === 'string') fields.title = args.title;
+        if (typeof args.prompt === 'string') fields.prompt = args.prompt;
+        if (typeof args.model === 'string') fields.model = args.model;
+        if (typeof args.x === 'number') fields.x = args.x;
+        if (typeof args.y === 'number') fields.y = args.y;
+        const updated = Object.keys(fields);
+        if (updated.length === 0) {
           throw new Error('没有要修改的字段：至少传 title、prompt、model、x 或 y 之一');
         }
-        await settings.client.updateNode(args.node_id, patch, { signal: exec.signal });
-        return { node_id: args.node_id, updated_fields: Object.keys(patch).filter((key) => key !== 'name') };
+        await cli.nodeUpdate(settings.config, keyOf(settings), args.node_id, fields, exec.signal);
+        return { node_id: args.node_id, updated_fields: updated };
       },
     },
     {
@@ -903,7 +892,7 @@ function canvasTools(settings) {
       async execute(args, exec) {
         const connectionId = String(args.connection_id ?? '').trim();
         if (connectionId === '') throw new Error('connection_id 不能为空');
-        await settings.client.disconnect(connectionId, { signal: exec.signal });
+        await cli.disconnect(settings.config, keyOf(settings), connectionId, exec.signal);
         return { disconnected: true, connection_id: connectionId };
       },
     },
@@ -940,9 +929,14 @@ function canvasTools(settings) {
       timeoutMs: 180_000,
       async execute(args, exec) {
         const kind = typeof args.kind === 'string' ? args.kind : kindOfPath(args.path);
-        const file = await settings.readMediaFile(args.path, kind, exec.signal, exec.agent);
-        const uploaded = await settings.client.upload(file, kind, { signal: exec.signal });
-        return { url: uploaded.url, name: uploaded.name, kind };
+        const projectId = projectOf(args, settings);
+        const path = await settings.resolveMediaPath(args.path, exec.agent);
+        const uploaded = await cli.upload(settings.config, keyOf(settings), projectId, path, kind, exec.signal);
+        return {
+          url: String(uploaded?.url ?? uploaded?.asset?.url ?? ''),
+          name: String(uploaded?.name ?? uploaded?.filename ?? path.split(/[\\/]/).pop()),
+          kind,
+        };
       },
     },
   ];
@@ -1012,18 +1006,21 @@ function projectDeleteTool(settings) {
       // Read first, delete second: the summary is what makes the deletion
       // auditable afterwards, and it also turns a typo'd id into a NOT_FOUND
       // before anything is destroyed.
-      const canvas = await settings.client.canvas(projectId, { signal: exec.signal });
-      const nodeTypes = [...new Set(canvas.nodes.map((node) => String(node.node_type ?? '')).filter((type) => type !== ''))];
-      const hasOutput = canvas.nodes.some((node) => firstURLOf(node) !== '');
+      const canvas = await cli.canvas(settings.config, keyOf(settings), projectId, { signal: exec.signal });
+      const nodes = canvas?.nodes ?? [];
+      const nodeTypes = [...new Set(nodes.map((node) => String(node.node_type ?? node.type ?? '')).filter((type) => type !== ''))];
+      const hasOutput = nodes.some((node) => firstURLOf(node) !== '');
       const summary = {
         project_id: projectId,
-        node_count: canvas.nodes.length,
+        node_count: nodes.length,
         node_types: nodeTypes,
         has_output: hasOutput,
       };
 
       if (args.confirm !== true) return { ...summary, deleted: false };
 
+      // The CLI has no `project delete` command (verified against the installed
+      // binary), so this is the one operation that still uses the REST API.
       await settings.client.deleteProject(projectId, { signal: exec.signal });
       return { ...summary, deleted: true };
     },

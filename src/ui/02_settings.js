@@ -485,6 +485,10 @@ function UpdreamSettings(props) {
     [copy.tier, status.credits?.tier ?? copy.none, false],
     [copy.balance, status.credits ? String(status.credits.available ?? copy.none) : copy.none, true],
     [copy.baseURL, config.baseURL || 'https://www.updream.cn/api', true],
+    ['CLI 账号', status.cli?.configured
+      ? `${status.cli.username ?? ''} (${status.cli.upstreamId ?? '?'})`
+      : (status.cli?.error ?? copy.none), false],
+    ['CLI 配置', status.cli?.configPath || copy.none, true],
     [copy.pollInterval, `${Math.round((Number(config.pollIntervalMs) || 300000) / 1000)}s`, true],
     [copy.lastError, status.lastError || copy.none, false],
   ];

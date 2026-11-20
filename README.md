@@ -82,6 +82,14 @@ dsh-connect-updream/active           { kind: 'api-key', key: '<uuid>' }
 
 账号之间数据互相不可见（项目、画布、素材都归各自的用户）。默认模型也会**按当前账号的会员档位挑选**，避免默认选中一个 `pro` 档位、而账号只有 `origin` 时必然失败的模型。
 
+## 以 CLI 为执行层
+
+插件的所有 Updream 操作都通过本机的 `updream` 命令行完成（`src/cli.js` 是这层薄桥）：请求形状、生成默认参数、版本门禁和幂等规则都由 CLI 统一维护。因此 CLI 必须在 PATH 中，或在配置里用 `cliPath` 指定绝对路径。
+
+- **账号跟随**：切换、添加或删除账号时，插件会把当前 Key 通过 `updream auth login --api-key -` 写进 CLI 配置（`~/.updream/cli.json`，0600），保证两边始终是同一个账号。切换失败会回滚账号指针，不让两边不一致。设置页「诊断」栏能看到 CLI 当前账号与配置路径。
+- **手动重同步**：若 CLI 被别处改动，可调用 `POST /plugins/dsh-connect-updream/cli/sync` 或重新切换一次账号。
+- **唯一例外**：CLI 没有 `project delete` 命令，`updream_project_delete` 仍用 REST 完成删除。
+
 ## 计费
 
 生图按张、生视频按秒，都计入你自己账号的 Updream 积分。插件不做本地预估，实际扣费以 Updream 返回为准。所有生成能力**默认关闭**，因为这是本插件里唯一「由模型自己决定花钱」的部分。
@@ -95,7 +103,8 @@ dsh-connect-updream/active           { kind: 'api-key', key: '<uuid>' }
 ## 结构
 
 ```
-src/upstream.js   Updream REST 客户端（唯一知道上游接口形状的模块）
+src/cli.js        Updream CLI 桥：spawn + JSON 信封解析，唯一执行层
+src/upstream.js   REST 客户端：仅供 CLI 没有的 project delete 使用，及结果解析
 src/accounts.js   多账号存储：Key 列表、当前账号指针、旧版单 Key 迁移
 src/config.js     配置规范化（无外部依赖，本地安装也能加载）
 src/tools.js      模型可见的工具

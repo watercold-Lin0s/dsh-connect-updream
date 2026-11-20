@@ -40,6 +40,8 @@ export const MAX_TASK_TIMEOUT_MS = 570_000;
 const DEFAULTS = {
   baseURL: DEFAULT_BASE_URL,
   teamId: '',
+  /** Absolute path to the `updream` binary. Empty means "resolve from PATH". */
+  cliPath: '',
   defaultProjectId: '',
   allowImageTools: false,
   allowVideoTools: false,
@@ -86,6 +88,7 @@ export function normalizeConfig(raw) {
   const config = { ...DEFAULTS };
 
   if (typeof source.baseURL === 'string' && source.baseURL.trim() !== '') config.baseURL = source.baseURL.trim();
+  if (typeof source.cliPath === 'string') config.cliPath = source.cliPath.trim();
   for (const field of ['teamId', 'defaultProjectId']) {
     if (typeof source[field] === 'string') config[field] = source[field].trim();
   }

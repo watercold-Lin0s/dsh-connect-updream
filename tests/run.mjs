@@ -17,6 +17,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SUITES = [
   ['tool definitions', 'test_tool_definitions.mjs'],
   ['config normalization', 'test_config.mjs'],
+  ['CLI bridge', 'test_cli_bridge.mjs'],
   ['composer readout', 'test_composer_readout.cjs'],
   ['stylesheet quality', 'test_css.cjs'],
   // Real React, in-process: the only check that can see a component throwing

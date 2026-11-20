@@ -19,6 +19,7 @@ import { extname, isAbsolute, resolve } from 'node:path';
 import { annotatedModels, normalizeConfig, taskTimeoutOf } from './config.js';
 import { AccountStore, CREDENTIAL_SCOPE, maskKey, publicAccount } from './accounts.js';
 import { UpdreamClient, UpdreamError, normalizeBaseURL } from './upstream.js';
+import { cliLogin, cliStatus, CliError, runCli } from './cli.js';
 import { registerTools } from './tools.js';
 
 /** Host route prefix; the browser half mirrors these paths. */
@@ -238,8 +239,55 @@ export function apply(ctx, rawConfig) {
     return account === undefined ? '' : account.key;
   };
 
+  /** Read the CLI's configured identity without changing it (best-effort). */
+  const cliIdentity = async () => {
+    try {
+      const status = await cliStatus(config, '');
+      const user = status?.user ?? null;
+      return {
+        configured: status?.authenticated === true,
+        upstreamId: user?.id === undefined ? '' : String(user.id),
+        username: typeof user?.username === 'string' ? user.username : '',
+        configPath: String(status?.config_path ?? ''),
+      };
+    } catch (cause) {
+      return { configured: false, upstreamId: '', username: '', error: String(cause?.message ?? cause) };
+    }
+  };
+
   /** Build a client from the ACTIVE account, so a switch applies immediately. */
   const client = async () => buildSettings(config, await apiKey(), workspace);
+
+  /**
+   * Mirror the active Updream account into the CLI's own config.
+   *
+   * The CLI is the single execution layer of this plugin, so every command it
+   * runs must carry the same identity as the account shown in the UI. The key
+   * goes in on stdin (`auth login --api-key -`), never through argv or shell
+   * history. A failed sync leaves the CLI on its previous account and raises,
+   * so the caller never reports a switch that did not really happen.
+   */
+  const syncCliAccount = async () => {
+    const active = await accounts.active();
+    if (active === undefined || active.key === '') return;
+    try {
+      await cliLogin(config, active.key);
+      const status = await cliStatus(config, active.key);
+      const cliUser = status?.user ?? null;
+      if (cliUser !== null && String(cliUser.id ?? '') !== String(active.upstreamId ?? '')) {
+        // Key config was written but belongs to a different account: surface it
+        // instead of silently running tools under the wrong identity.
+        lastError = `CLI 账号不一致：插件为 ${active.upstreamId}，CLI 为 ${String(cliUser.id ?? '')}`;
+        throw new Error(lastError);
+      }
+      lastError = '';
+    } catch (cause) {
+      if (cause instanceof CliError || cause instanceof Error) {
+        lastError = `同步 CLI 账号失败：${String(cause?.message ?? cause)}`;
+      }
+      throw cause;
+    }
+  };
 
   /**
    * Every stored account with its masked key and its active flag. A migrated
@@ -295,6 +343,7 @@ export function apply(ctx, rawConfig) {
       user: null,
       credits: null,
       tier: '',
+      cli: await cliIdentity(),
       lastError,
     };
     if (!connected) return document;
@@ -352,6 +401,12 @@ export function apply(ctx, rawConfig) {
 
     route(`${ROUTE_BASE}/status`, 'GET', async () => statusDocument());
 
+    /** Explicitly re-sync the CLI config to the active account. */
+    route(`${ROUTE_BASE}/cli/sync`, 'POST', async () => {
+      await syncCliAccount();
+      return statusDocument();
+    });
+
     route(`${ROUTE_BASE}/credits`, 'GET', async () => {
       const active = await accounts.active();
       if (active === undefined) throw new Error('还没有添加任何账号');
@@ -404,7 +459,20 @@ export function apply(ctx, rawConfig) {
       const body = JSON.parse(await readBody(req) || '{}');
       const candidate = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
       if (candidate !== '') {
-        await accounts.add(candidate, typeof body.label === 'string' ? body.label : '');
+        const before = await accounts.activeId();
+        const account = await accounts.add(candidate, typeof body.label === 'string' ? body.label : '');
+        const after = await accounts.activeId();
+        // Adding the first account (or a replacement after removing the old
+        // one) makes it active, so the CLI must follow. On failure, undo the
+        // newly stored account rather than leave a half-added identity.
+        if (after === account?.id && before !== after) {
+          try {
+            await syncCliAccount();
+          } catch (cause) {
+            if (account?.id) await accounts.remove(account.id);
+            throw cause;
+          }
+        }
       } else {
         const settings = await client();
         if (settings.client.apiKey === '') throw new Error('还没有添加任何账号');
@@ -414,11 +482,20 @@ export function apply(ctx, rawConfig) {
       return statusDocument();
     });
 
-    /** Switch the active account: the very next request uses it. */
+    /** Switch the active account: the CLI config is updated to match. */
     route(`${ROUTE_BASE}/accounts/activate`, 'POST', async (req) => {
       const body = JSON.parse(await readBody(req) || '{}');
-      await accounts.activate(String(body.id ?? ''));
-      lastError = '';
+      const target = String(body.id ?? '');
+      const previous = await accounts.activeId();
+      await accounts.activate(target);
+      try {
+        await syncCliAccount();
+      } catch (cause) {
+        // Roll the vault pointer back so the plugin and CLI never disagree
+        // about which account is live.
+        if (previous !== '' && previous !== target) await accounts.activate(previous);
+        throw cause;
+      }
       return statusDocument();
     });
 
@@ -432,7 +509,10 @@ export function apply(ctx, rawConfig) {
     /** Remove an account; the next remaining one takes over when it was active. */
     route(`${ROUTE_BASE}/accounts/remove`, 'POST', async (req) => {
       const body = JSON.parse(await readBody(req) || '{}');
+      const wasActive = (await accounts.activeId()) === String(body.id ?? '');
       await accounts.remove(String(body.id ?? ''));
+      if (wasActive && (await accounts.active())) await syncCliAccount();
+      else if (!(await accounts.active())) lastError = '已删除所有账号，CLI 仍保留最后一次登录的 Key';
       return statusDocument();
     });
 
@@ -460,13 +540,16 @@ export function apply(ctx, rawConfig) {
     route(`${ROUTE_BASE}/config`, 'POST', async (req) => {
       const body = JSON.parse(await readBody(req) || '{}');
       if (typeof body.removeAccountId === 'string' && body.removeAccountId !== '') {
+        const wasActive = (await accounts.activeId()) === body.removeAccountId;
         await accounts.remove(body.removeAccountId);
+        if (wasActive && (await accounts.active())) await syncCliAccount();
         return statusDocument();
       }
       if (body.clearApiKey === true) {
         // Kept for a page opened before the multi-account upgrade: "clear" now
         // means "remove every account", which is what that button promised.
         for (const account of await accounts.list()) await accounts.remove(account.id);
+        lastError = '已删除所有账号，CLI 仍保留最后一次登录的 Key';
         return statusDocument();
       }
       const patch = {};
@@ -529,6 +612,17 @@ export function apply(ctx, rawConfig) {
       get client() { return settings.client; },
       get taskTimeoutMs() { return settings.taskTimeoutMs; },
       get models() { return settings.models; },
+      /** The active account's key; tools pass it to every CLI invocation. */
+      apiKey,
+      /**
+       * Resolve a possibly-relative media path against the calling Agent's
+       * working directory. The CLI does the actual upload; we only supply the
+       * path so byte handling and face precheck stay in one implementation.
+       */
+      resolveMediaPath(path, agent) {
+        const resolved = isAbsolute(path) ? path : resolve(baseDirectoryOf(ctx, agent, workspace), path);
+        return resolved;
+      },
       async readImageFile(path, signal, agent) {
         await ready;
         return readMediaFile(path, 'image', baseDirectoryOf(ctx, agent, workspace), signal);

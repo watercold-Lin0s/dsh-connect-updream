@@ -367,6 +367,12 @@ export class UpdreamClient {
  * @returns every URL the task produced, in server order.
  */
 export function resultURLsOf(task, kind) {
+  // The CLI's `task get` returns a flat `result_urls` array in addition to the
+  // raw `result` document. Prefer it: it is the platform's canonical answer,
+  // while the shape inside `result` varies per model.
+  if (Array.isArray(task?.result_urls) && task.result_urls.length > 0) {
+    return [...new Set(task.result_urls.filter((url) => typeof url === 'string' && url !== ''))];
+  }
   const result = task?.result;
   if (result === null || typeof result !== 'object') return [];
   const urls = [];
@@ -406,6 +412,6 @@ export function resultURLsOf(task, kind) {
  * @returns the text, or an empty string.
  */
 export function resultTextOf(task) {
-  const text = task?.result?.text;
+  const text = task?.result?.text ?? task?.result_text;
   return typeof text === 'string' ? text : '';
 }
