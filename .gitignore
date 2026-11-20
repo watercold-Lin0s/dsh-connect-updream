@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Test scratch output
+#   The preview/probe harness writes screenshots and pages here; they are
+#   regenerated on demand by `npm run preview` and by the render checks.
+#   The three vendored React UMD builds are KEPT: two offline checks need them
+#   and skip themselves without them, so leaving them out would silently weaken
+#   the suite for anyone who clones the repo.
+tests/_p/*
+!tests/_p/react.js
+!tests/_p/react-dom.js
+!tests/_p/react-dom-server.js
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local runtime state that must never be published
+#   A real API key lives in the DSH credential vault, never in this tree, but a
+#   stray local config or scratch dump is easy to produce while testing.
+.env
+.env.*
+*.local.json

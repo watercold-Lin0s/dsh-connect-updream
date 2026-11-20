@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Updream",
+    "description": "Bring Updream (updream.cn) image, video, and text generation into DSH: the model can generate images and video on its own, read and edit canvas nodes and connections, upload local assets, poll a generation task that outlived its wait budget, and show the account's credit balance in the composer. The API key lives in the local credential vault, never in plugin config. Every generation capability is off by default and must be switched on individually.",
+    "detail": "docs/DETAIL.md"
+  }
+}

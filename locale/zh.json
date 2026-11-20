@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Updream",
+    "description": "把 Updream（updream.cn）的图片、视频与文本生成接入 DSH：模型可自主生图/生视频、读写画布节点与连线、上传本地素材、续查等待超时的生成任务，并在输入框里显示账号积分读数。API Key 保存在本机凭据库，不写入插件配置。所有生成能力默认关闭，需要逐个开启。",
+    "detail": "docs/DETAIL.md"
+  }
+}

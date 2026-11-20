@@ -1,0 +1,616 @@
+/* ==================================================================== */
+/*  dsh-connect-updream — stylesheet (rewritten)                        */
+/*                                                                      */
+/*  Every colour here is one of the 16 theme tokens the DSH shell        */
+/*  actually registers, with NO hardcoded fallback: if the shell ever    */
+/*  renames a token the bug is loud in both themes instead of silently   */
+/*  pinning a dark colour onto a light page.                            */
+/*                                                                      */
+/*  Class families, all of them referenced by client.js:                 */
+/*    dcu-page / dcu-head        page frame and masthead                  */
+/*    dcu-tabbar / dcu-tab       section switcher                        */
+/*    dcu-card / dcu-card-*      grouped surface                         */
+/*    dcu-row / dcu-row-*        one line of settings data               */
+/*    dcu-acct-*                 account rows                            */
+/*    dcu-model-*                model rows                              */
+/*    dcu-switch / dcu-switchrow capability toggles                      */
+/*    dcu-btn / dcu-badge        controls                                */
+/*    dcu-savebar                sticky commit bar                       */
+/*    dcu-pill / dcu-pop         composer credit readout                 */
+/*  NOTE: no backticks anywhere in this file. It is embedded in a         */
+/*  template literal, and one stray backtick cuts the file in half.      */
+/* ==================================================================== */
+
+/* -------------------------------------------------------------------- */
+/* Page frame                                                            */
+/* -------------------------------------------------------------------- */
+
+.dcu-page{
+  display:flex;flex-direction:column;
+  margin:0;padding:0 0 8px;
+  color:var(--dsw-alias-label-primary);
+  font-size:13px;line-height:20px;
+}
+
+/* Masthead: the plugin's identity, then a one-line promise of what the page
+   does. The icon is a filled disc rather than a bare glyph so the page opens
+   with a colour anchor at the top-left, matching how the shell's own settings
+   sections start. */
+.dcu-head{
+  display:flex;align-items:center;gap:12px;
+  padding:4px 0 16px;
+}
+.dcu-head-icon{
+  flex:none;display:grid;place-items:center;
+  width:36px;height:36px;border-radius:10px;
+  background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent);
+  color:var(--dsw-alias-brand-primary);
+}
+.dcu-head-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dcu-head-title{margin:0;font-size:15px;line-height:22px;font-weight:600;letter-spacing:-.01em}
+.dcu-head-desc{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+  overflow-wrap:anywhere}
+
+/* -------------------------------------------------------------------- */
+/* Tabs                                                                  */
+/* -------------------------------------------------------------------- */
+
+/* A rule under the whole row, with the active tab's own rule drawn on top of
+   it. That is the one selected-state shape that stays legible at 13px without
+   borrowing the brand colour for a filled chip (which would compete with the
+   save button at the bottom of the same page). */
+.dcu-tabbar{
+  display:flex;align-items:stretch;gap:4px;
+  margin:0 0 16px;padding:0;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+.dcu-tab{
+  appearance:none;flex:none;position:relative;
+  margin:0 0 -1px;padding:7px 12px 9px;
+  border:0;border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  background:transparent;
+  color:var(--dsw-alias-label-tertiary);
+  font:inherit;font-size:13px;line-height:20px;font-weight:500;
+  white-space:nowrap;cursor:pointer;
+  transition:color .14s ease,border-color .14s ease,background-color .14s ease;
+}
+.dcu-tab:hover{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1)}
+/* The active tab states itself three ways — colour, weight, and the underline —
+   because any ONE of them alone is easy to miss next to four peers. */
+.dcu-tab-on{
+  color:var(--dsw-alias-label-primary);
+  font-weight:600;
+  border-bottom-color:var(--dsw-alias-brand-primary);
+  background:transparent;
+}
+.dcu-tab-on:hover{color:var(--dsw-alias-label-primary);background:transparent}
+.dcu-tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dcu-tab:disabled{opacity:.45;cursor:default}
+
+/* -------------------------------------------------------------------- */
+/* Cards                                                                 */
+/* -------------------------------------------------------------------- */
+
+.dcu-card{
+  margin:0 0 12px;padding:0;
+  border:1px solid var(--dsw-alias-border-l1);
+  border-radius:12px;
+  background:var(--dsw-alias-bg-layer-1);
+  overflow:hidden;
+}
+.dcu-card:last-child{margin-bottom:0}
+.dcu-card-head{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 14px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+.dcu-card-title{margin:0;font-size:13px;line-height:20px;font-weight:600;
+  color:var(--dsw-alias-label-primary)}
+.dcu-card-desc{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+  overflow-wrap:anywhere}
+.dcu-card-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+.dcu-card-body{padding:14px}
+.dcu-card-body-flush{padding:0}
+
+/* A footnote inside a card: quieter than the data, never a second title. */
+.dcu-note{
+  margin:8px 0 0;font-size:12px;line-height:18px;
+  color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere;
+}
+.dcu-note-flush{margin:0;padding:10px 14px}
+
+/* -------------------------------------------------------------------- */
+/* Buttons                                                               */
+/* -------------------------------------------------------------------- */
+
+.dcu-btn{
+  appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  flex:none;margin:0;padding:0 12px;height:30px;
+  border:1px solid transparent;border-radius:8px;
+  font:inherit;font-size:12px;line-height:18px;font-weight:500;
+  white-space:nowrap;cursor:pointer;
+  transition:background-color .13s ease,border-color .13s ease,color .13s ease,opacity .13s ease;
+}
+.dcu-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dcu-btn:disabled{opacity:.45;cursor:default}
+
+/* Secondary: an outline that fills in on hover. Used for every reversible
+   action, so the destructive one is the only filled control on the row. */
+.dcu-btn-quiet{
+  border-color:var(--dsw-alias-border-l2);
+  background:transparent;
+  color:var(--dsw-alias-label-secondary);
+}
+.dcu-btn-quiet:hover:not(:disabled){
+  background:var(--dsw-alias-bg-layer-2);
+  border-color:var(--dsw-alias-label-tertiary);
+  color:var(--dsw-alias-label-primary);
+}
+
+/* Primary: the brand colour, and the ONLY place white-on-brand is used. The
+   old build filled this with the text colour and painted the label in a token
+   that does not exist, which is how it rendered invisible in the light theme. */
+.dcu-btn-brand{
+  background:var(--dsw-alias-brand-primary);
+  border-color:var(--dsw-alias-brand-primary);
+  color:#fff;
+}
+.dcu-btn-brand:hover:not(:disabled){filter:brightness(1.08)}
+.dcu-btn-brand:active:not(:disabled){filter:brightness(.94)}
+
+/* Danger: only on the one irreversible control (remove an account). Outline at
+   rest and filled on hover, so it is found when looked for and never mistaken
+   for the primary action. */
+.dcu-btn-danger{
+  border-color:var(--dsw-alias-border-l2);
+  background:transparent;
+  color:var(--dsw-alias-label-secondary);
+}
+.dcu-btn-danger:hover:not(:disabled){
+  border-color:var(--dsw-alias-state-error-primary);
+  background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);
+  color:var(--dsw-alias-state-error-primary);
+}
+
+/* A button that only carries an icon: square, so a row of them aligns. */
+
+/* Sizes: small is for controls that sit INSIDE a data row, where a 30px button
+   would set the row height and make the table read as a toolbar. */
+.dcu-btn-sm{height:26px;padding:0 10px;font-size:12px;border-radius:7px}
+
+/* -------------------------------------------------------------------- */
+/* Inputs                                                                */
+/* -------------------------------------------------------------------- */
+
+.dcu-input{
+  appearance:none;flex:1 1 auto;min-width:0;
+  margin:0;padding:0 10px;height:30px;
+  border:1px solid var(--dsw-alias-border-l2);border-radius:8px;
+  background:var(--dsw-alias-bg-layer-2);
+  color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:13px;line-height:18px;
+  transition:border-color .13s ease,box-shadow .13s ease;
+}
+.dcu-input::placeholder{color:var(--dsw-alias-label-tertiary)}
+.dcu-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 20%,transparent)}
+.dcu-input:disabled{opacity:.55;cursor:default}
+.dcu-input-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+
+/* A native select, restyled. The caret is drawn in CSS rather than taken from
+   an icon font, because the host's icon names differ between DSH lines. */
+.dcu-select{
+  appearance:none;flex:1 1 auto;min-width:0;position:relative;
+  margin:0;padding:0 30px 0 10px;height:30px;
+  border:1px solid var(--dsw-alias-border-l2);border-radius:8px;
+  background:var(--dsw-alias-bg-layer-2);
+  color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:13px;line-height:18px;
+  cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) 13px,calc(100% - 10px) 13px;
+  background-size:5px 5px,5px 5px;
+  background-repeat:no-repeat;
+}
+.dcu-select:focus{outline:none;border-color:var(--dsw-alias-brand-primary);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 20%,transparent)}
+.dcu-select:disabled{opacity:.55;cursor:default}
+
+/* -------------------------------------------------------------------- */
+/* Rows — the shared line shape behind every list on the page            */
+/* -------------------------------------------------------------------- */
+
+.dcu-row{
+  display:flex;align-items:center;gap:10px;
+  margin:0;padding:10px 14px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+  min-height:44px;
+}
+.dcu-row:last-child{border-bottom:0}
+
+/* A row that IS a control (the clickable account rows in the popover, the model
+   checkboxes) lifts its background on hover and nothing else — no border
+   change, so a hovered row in a list of twelve does not make the list jump. */
+.dcu-row-button{
+  appearance:none;width:100%;box-sizing:border-box;
+  border:0;border-bottom:1px solid var(--dsw-alias-border-l1);
+  border-radius:0;background:transparent;
+  color:inherit;font:inherit;text-align:left;cursor:pointer;
+}
+.dcu-row-button:last-child{border-bottom:0}
+.dcu-row-button:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2)}
+.dcu-row-button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dcu-row-button:disabled{cursor:default}
+
+/* The flexible middle of a row: a title over an optional second line. min-width
+   is what lets the ellipsis actually work inside a flex line. */
+.dcu-row-main{display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-width:0}
+.dcu-row-title{font-size:13px;line-height:20px;font-weight:500;
+  color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcu-row-sub{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* -------------------------------------------------------------------- */
+/* Account rows                                                          */
+/* -------------------------------------------------------------------- */
+
+/* The avatar dot: a ring that becomes a filled brand disc for the active
+   account. It reads at a glance in a column of eight rows, which a text badge
+   does not. */
+.dcu-acct-dot{
+  flex:none;width:8px;height:8px;border-radius:50%;
+  background:var(--dsw-alias-border-l2);
+}
+.dcu-acct-dot-on{background:var(--dsw-alias-brand-primary)}
+
+/* The balance column. Tabular numerals and a right edge shared by every row:
+   figures that shift a character left per row are unreadable as a column. */
+.dcu-acct-credits{
+  flex:none;min-width:72px;text-align:right;
+  font-size:13px;line-height:20px;font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--dsw-alias-label-primary);
+}
+
+.dcu-acct-actions{flex:none;display:flex;align-items:center;gap:6px}
+
+/* -------------------------------------------------------------------- */
+/* Badges                                                                */
+/* -------------------------------------------------------------------- */
+
+.dcu-badge{
+  display:inline-flex;align-items:center;flex:none;gap:4px;
+  padding:0 7px;height:20px;border-radius:999px;
+  border:1px solid var(--dsw-alias-border-l2);
+  background:transparent;
+  color:var(--dsw-alias-label-tertiary);
+  font-size:11px;line-height:18px;font-weight:500;white-space:nowrap;
+}
+.dcu-badge-brand{
+  border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 40%,transparent);
+  background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent);
+  color:var(--dsw-alias-brand-primary);
+}
+.dcu-badge-ok{
+  border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,transparent);
+  background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);
+  color:var(--dsw-alias-state-success-primary);
+}
+.dcu-badge-warn{
+  border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 40%,transparent);
+  background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);
+  color:var(--dsw-alias-state-warn-primary);
+}
+.dcu-badge-error{
+  border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 40%,transparent);
+  background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);
+  color:var(--dsw-alias-state-error-primary);
+}
+
+/* -------------------------------------------------------------------- */
+/* Models                                                                */
+/* -------------------------------------------------------------------- */
+
+/* Each model is a label wrapping a native checkbox. The checkbox keeps the
+   platform's own rendering with accent-color — a hand-drawn one drifts in
+   size between engines and looks blurry at the 13px the list uses. */
+.dcu-model{
+  display:flex;align-items:center;gap:10px;
+  margin:0;padding:8px 14px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+  cursor:pointer;
+  transition:background-color .12s ease;
+}
+.dcu-model:last-child{border-bottom:0}
+.dcu-model:hover{background:var(--dsw-alias-bg-layer-2)}
+.dcu-model input{
+  flex:none;margin:0;width:14px;height:14px;
+  accent-color:var(--dsw-alias-brand-primary);cursor:pointer;
+}
+/* A model this tier cannot run stays listed (the catalogue is the catalogue)
+   but reads as unavailable instead of pretending to be selectable. */
+.dcu-model-off{opacity:.6}
+.dcu-model-name{flex:1 1 auto;min-width:0;font-size:13px;line-height:20px;
+  color:var(--dsw-alias-label-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcu-model-id{
+  flex:none;max-width:180px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* The per-kind toolbar (select origin / all / none) sits under the card head
+   and above the rows, separated by the same hairline every list uses. */
+
+/* -------------------------------------------------------------------- */
+/* Capability switches                                                   */
+/* -------------------------------------------------------------------- */
+
+.dcu-switchrow{
+  display:flex;align-items:flex-start;gap:16px;
+  margin:0;padding:12px 14px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+.dcu-switchrow:last-child{border-bottom:0}
+.dcu-switchtext{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:0}
+.dcu-switchtitle{font-size:13px;line-height:20px;font-weight:500;
+  color:var(--dsw-alias-label-primary)}
+.dcu-switchhint{margin:0;font-size:12px;line-height:18px;
+  color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
+
+/* A pill track with a sliding knob. 36x20 is the size the shell's own toggles
+   use; anything smaller stops being hittable on a touch display. */
+.dcu-switch{
+  appearance:none;position:relative;flex:none;
+  width:36px;height:20px;margin:4px 0 0;padding:0;
+  border:0;border-radius:999px;cursor:pointer;
+  background:var(--dsw-alias-border-l2);
+  transition:background-color .16s ease;
+}
+.dcu-switch::after{
+  content:"";position:absolute;top:2px;left:2px;
+  width:16px;height:16px;border-radius:50%;
+  background:#fff;
+  box-shadow:0 1px 2px rgba(0,0,0,.28);
+  transition:transform .16s ease;
+}
+.dcu-switch[aria-checked="true"]{background:var(--dsw-alias-brand-primary)}
+.dcu-switch[aria-checked="true"]::after{transform:translateX(16px)}
+.dcu-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.dcu-switch:disabled{cursor:default;opacity:.5}
+
+/* -------------------------------------------------------------------- */
+/* Save bar                                                              */
+/* -------------------------------------------------------------------- */
+
+/* Sticky, because the page is longer than the fold once the model lists load
+   and an unsaved edit must not require scrolling to commit. The top hairline
+   plus the page background is what separates it from the card behind it. */
+.dcu-savebar{
+  position:sticky;bottom:0;z-index:3;
+  display:flex;align-items:center;gap:10px;
+  margin:12px 0 0;padding:12px 2px;
+  border-top:1px solid var(--dsw-alias-border-l1);
+  background:var(--dsw-alias-bg-base);
+}
+.dcu-savebar-status{flex:1 1 auto;min-width:0;font-size:12px;line-height:18px;
+  color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* "Saved" is the resting state and must not look like an alert. "Unsaved" earns
+   the warn tone, which is the only signal that the two buttons are live. */
+.dcu-savebar-dirty{color:var(--dsw-alias-state-warn-primary);font-weight:500}
+.dcu-savebar-ok{color:var(--dsw-alias-state-success-primary)}
+.dcu-savebar-actions{flex:none;display:flex;align-items:center;gap:8px}
+
+/* -------------------------------------------------------------------- */
+/* Diagnostics                                                           */
+/* -------------------------------------------------------------------- */
+
+
+.dcu-diag-row{
+  display:flex;align-items:baseline;gap:16px;
+  padding:8px 14px;border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+.dcu-diag-row:last-child{border-bottom:0}
+/* A fixed label column: ragged labels make six facts read as six paragraphs. */
+.dcu-diag-label{
+  flex:none;width:104px;
+  font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+}
+.dcu-diag-value{
+  flex:1 1 auto;min-width:0;
+  font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);
+  overflow-wrap:anywhere;
+}
+.dcu-diag-mono{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;line-height:18px;color:var(--dsw-alias-label-secondary);
+  overflow-wrap:anywhere;
+}
+
+/* -------------------------------------------------------------------- */
+/* Messages                                                              */
+/* -------------------------------------------------------------------- */
+
+/* One error surface for the whole page: brand-neutral border, error tone for
+   the text, and a left rule so it is not mistaken for a card. role="alert"
+   carries the urgency; the colour only locates it. */
+.dcu-alert{
+  display:flex;align-items:flex-start;gap:8px;
+  margin:0 0 12px;padding:10px 12px;
+  border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 34%,transparent);
+  border-left-width:3px;
+  border-radius:8px;
+  background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 8%,transparent);
+  color:var(--dsw-alias-state-error-primary);
+  font-size:12px;line-height:18px;
+  white-space:pre-line;overflow-wrap:anywhere;
+}
+
+/* The first-load skeleton. Kept to one quiet line: a spinner that appears for
+   less than a frame reads as a flash, and a large one would jump the layout. */
+.dcu-loading{
+  display:flex;align-items:center;gap:8px;
+  padding:24px 14px;
+  font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+}
+.dcu-spinner{
+  flex:none;width:14px;height:14px;border-radius:50%;
+  border:2px solid var(--dsw-alias-border-l2);
+  border-top-color:var(--dsw-alias-brand-primary);
+  animation:dcu-spin .8s linear infinite;
+}
+@keyframes dcu-spin{to{transform:rotate(360deg)}}
+
+/* -------------------------------------------------------------------- */
+/* Composer credit pill                                                  */
+/* -------------------------------------------------------------------- */
+
+/* The trigger's wrapper. align-items:center is not decoration: without it the
+   two spans (12px name, 12px value at different weights) align on the baseline
+   and the pill's height drifts by a pixel between states. min-width:0 lets the
+   name ellipsise instead of pushing the row wider than its slot. */
+.dcu-pill-wrap{display:inline-flex;align-items:center;flex:none;min-width:0}
+
+/* Sits in the composer's right-hand row beside the shell's own controls, so it
+   takes their metrics: 12px/18px, tertiary label, tabular figures. It is
+   secondary information and must not shout.
+ *
+ * align-self:stretch and the ABSENCE of a fixed height are load-bearing: the
+ * surrounding row is taller than this text, and a hard 24px left a band above
+ * and below the pill that looked like it belonged to the control but was not
+ * part of it, so a press just outside the text did nothing. Stretching makes the
+ * whole cell the hit target. */
+.dcu-pill{
+  display:inline-flex;align-items:center;align-self:stretch;gap:6px;
+  margin:0;padding:2px 8px;
+  border:1px solid transparent;border-radius:999px;
+  background:transparent;
+  color:var(--dsw-alias-label-tertiary);
+  font:inherit;font-size:12px;line-height:18px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;cursor:pointer;
+  transition:background-color .12s ease,color .12s ease;
+}
+.dcu-pill:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+.dcu-pill[aria-expanded="true"]{
+  background:var(--dsw-alias-bg-layer-2);
+  border-color:var(--dsw-alias-border-l1);
+  color:var(--dsw-alias-label-primary);
+}
+.dcu-pill:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* The balance is the reason the pill exists, so it carries the primary tone
+   and a weight step above the account name beside it. */
+.dcu-pill-value{color:var(--dsw-alias-label-primary);font-weight:600}
+.dcu-pill-name{color:var(--dsw-alias-label-tertiary)}
+/* An unreadable balance is a dash, never a zero and never a spinner forever. */
+.dcu-pill-error .dcu-pill-value{color:var(--dsw-alias-state-error-primary)}
+
+/* -------------------------------------------------------------------- */
+/* Composer popover                                                      */
+/* -------------------------------------------------------------------- */
+
+/* Portaled to body and positioned from the trigger's own rect, so it MUST be
+   fixed: a static box would fall into document flow and ignore the measured
+   left/bottom entirely. */
+.dcu-pop{
+  position:fixed;z-index:1100;box-sizing:border-box;
+  width:min(268px,calc(100vw - 24px));
+  padding:0;
+  border:1px solid var(--dsw-alias-border-l2);
+  border-radius:12px;
+  background:var(--dsw-alias-bg-overlay);
+  box-shadow:0 12px 32px rgba(0,0,0,.28),0 2px 6px rgba(0,0,0,.16);
+  color:var(--dsw-alias-label-primary);
+  font-size:13px;line-height:20px;
+  overflow:hidden;
+}
+.dcu-pop-head{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--dsw-alias-border-l1);
+}
+.dcu-pop-title{
+  flex:none;margin:0;
+  font-size:13px;line-height:20px;font-weight:600;
+  white-space:nowrap;color:var(--dsw-alias-label-primary);
+}
+.dcu-pop-actions{margin-left:auto;display:flex;align-items:center;gap:4px}
+
+/* Header controls are icon-plus-label pills at 11px: a plain text link in a
+   13px header is not recognisable as a control at rest. */
+.dcu-pop-btn{
+  appearance:none;display:inline-flex;align-items:center;gap:4px;
+  flex:none;margin:0;padding:0 7px;height:22px;
+  border:1px solid transparent;border-radius:999px;
+  background:transparent;
+  color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:11px;line-height:16px;font-weight:500;
+  white-space:nowrap;cursor:pointer;
+  transition:background-color .12s ease,color .12s ease;
+}
+.dcu-pop-btn:hover:not(:disabled){
+  background:var(--dsw-alias-bg-layer-2);
+  color:var(--dsw-alias-label-primary);
+}
+.dcu-pop-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dcu-pop-btn:disabled{opacity:.5;cursor:default}
+/* Navigation leaves the popover, so it is the one control here allowed the
+   brand tint. Two equally loud pills would turn the header into a toolbar. */
+.dcu-pop-btn-brand{color:var(--dsw-alias-brand-primary)}
+.dcu-pop-btn-brand:hover:not(:disabled){
+  background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent);
+  color:var(--dsw-alias-brand-primary);
+}
+.dcu-pop-btn-icon{flex:none;display:block}
+.dcu-pop-btn-icon-spin{animation:dcu-spin .9s linear infinite}
+
+/* The account list. Rows are buttons so the whole line is the target; the
+   figure is right-aligned in a tabular column shared by every row. */
+.dcu-pop-list{display:flex;flex-direction:column;margin:0;max-height:260px;overflow-y:auto}
+.dcu-pop-name{font-size:13px;line-height:20px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcu-pop-name-on{font-weight:600}
+.dcu-pop-mark{
+  flex:none;font-size:11px;line-height:16px;
+  color:var(--dsw-alias-state-success-primary);
+}
+.dcu-pop-value{
+  flex:none;min-width:64px;text-align:right;
+  font-size:12px;line-height:18px;font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--dsw-alias-label-primary);
+}
+.dcu-pop-value-idle{color:var(--dsw-alias-label-tertiary);font-weight:500}
+.dcu-pop-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 12px;
+  border-top:1px solid var(--dsw-alias-border-l1);
+  background:var(--dsw-alias-bg-layer-1);
+  font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);
+}
+.dcu-pop-error{
+  margin:0;padding:8px 12px;
+  border-top:1px solid var(--dsw-alias-border-l1);
+  color:var(--dsw-alias-state-error-primary);
+  font-size:11px;line-height:16px;
+}
+.dcu-pop-empty{
+  margin:0;padding:16px 12px;
+  font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);
+}
+
+/* -------------------------------------------------------------------- */
+/* Reduced motion                                                        */
+/* -------------------------------------------------------------------- */
+
+/* Transitions here are decoration; every state is fully legible without them.
+   The spinners are the exception — they carry "still working" — so they keep a
+   distinct look rather than vanishing. */
+@media (prefers-reduced-motion:reduce){
+  .dcu-tab,.dcu-btn,.dcu-model,.dcu-pill,.dcu-switch,.dcu-switch::after,
+  .dcu-input,.dcu-select,.dcu-pop-btn{transition:none}
+  .dcu-spinner{animation:none;border-top-color:var(--dsw-alias-label-tertiary);opacity:.7}
+  .dcu-pop-btn-icon-spin{animation:none;opacity:.55}
+}

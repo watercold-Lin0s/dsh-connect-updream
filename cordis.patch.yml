@@ -1,0 +1,6 @@
+# Register the Updream connector. Every tool family is off by default: this
+# plugin can spend real credits, so nothing is registered until the user turns
+# it on in 设置 → Updream.
+- insert:
+    - id: dsh-connect-updream
+      name: dsh-connect-updream

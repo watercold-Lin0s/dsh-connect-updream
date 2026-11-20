@@ -1,0 +1,61 @@
+{
+  "name": "dsh-connect-updream",
+  "version": "0.3.2",
+  "displayName": "DSH Connect Updream",
+  "description": "把 Updream（updream.cn）的图片、视频与文本生成接入 DeepSeek Harness：模型可自主生图/生视频、读写画布节点与连线、上传本地素材、续查未结束的生成任务，并在输入框里显示账号积分读数。API Key 保存于本机凭据库，不写入插件配置。",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "updream",
+    "image-generation",
+    "video-generation",
+    "canvas"
+  ],
+  "icon": "./icons/icon.svg",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": "^22.19 || >=24"
+  },
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icons/icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "locale",
+    "docs",
+    "icons",
+    "tests",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node tests/build_client.mjs",
+    "test": "node tests/run.mjs",
+    "preview": "node tests/make_preview.cjs tests/_p/preview.html dark settings",
+    "check": "node tests/build_client.mjs && node --check src/index.js && node --check src/client.js && node --check src/tools.js && node --check src/upstream.js && node --check src/accounts.js && node --check src/config.js && node tests/run.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}
